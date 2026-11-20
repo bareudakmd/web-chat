@@ -223,6 +223,57 @@
       font-size: 13px;
       line-height: 1.6;
     }
+    .lock {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: var(--bg);
+    }
+    .lock-card {
+      width: min(360px, 92vw);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+      padding: 28px 24px 22px;
+      text-align: center;
+    }
+    .lock-icon { font-size: 28px; line-height: 1; margin-bottom: 12px; }
+    .lock-title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+    .lock-desc { font-size: 13px; color: var(--muted); margin: 0 0 18px; line-height: 1.5; }
+    .lock-form { display: flex; flex-direction: column; gap: 8px; }
+    .lock-input {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+    }
+    .lock-input:focus { border-color: var(--accent); }
+    .lock-btn {
+      width: 100%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      padding: 11px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .lock-btn:hover { background: var(--accent-hover); }
+    .lock-btn:disabled { background: #b0c9ea; cursor: default; }
+    .lock-error {
+      min-height: 18px;
+      margin: 10px 0 0;
+      font-size: 12px;
+      color: #e5484d;
+    }
     @media (max-width: 720px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { display: none; }
@@ -230,7 +281,20 @@
   </style>
 </head>
 <body>
-  <div class="app">
+  <section class="lock" id="lockScreen">
+    <div class="lock-card">
+      <div class="lock-icon">🔒</div>
+      <h1 class="lock-title">웹 채팅방</h1>
+      <p class="lock-desc">비밀번호를 입력하면 대화가 열립니다.</p>
+      <form class="lock-form" id="lockForm">
+        <input class="lock-input" id="lockInput" type="password" placeholder="비밀번호" autocomplete="current-password" />
+        <button class="lock-btn" id="lockBtn" type="submit">입장</button>
+      </form>
+      <p class="lock-error" id="lockError"></p>
+    </div>
+  </section>
+
+  <div class="app" id="app" style="display: none">
     <aside class="sidebar">
       <div class="brand">
         <span>웹 채팅방</span>
@@ -427,6 +491,65 @@
 
     renderRooms();
     renderMessages();
+
+    /* ===== 입장 비밀번호 잠금 ===== */
+    const LOCK_HASH = "4e14a679c94b4afb37940d00b23878a19e756f511c3b208b80436921645b9a1f";
+    const LOCK_KEY = "web_chat_unlocked_v1";
+    const lockScreen = document.getElementById("lockScreen");
+    const appEl = document.getElementById("app");
+    const lockForm = document.getElementById("lockForm");
+    const lockInput = document.getElementById("lockInput");
+    const lockBtn = document.getElementById("lockBtn");
+    const lockError = document.getElementById("lockError");
+
+    function openChat() {
+      lockScreen.style.display = "none";
+      appEl.style.display = "";
+    }
+
+    async function sha256Hex(text) {
+      const bytes = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    if (sessionStorage.getItem(LOCK_KEY) === "1") {
+      openChat();
+    } else {
+      lockScreen.style.display = "";
+      appEl.style.display = "none";
+      lockInput.focus();
+    }
+
+    lockForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (lockBtn.disabled) return;
+      lockError.textContent = "";
+      if (!window.crypto || !crypto.subtle) {
+        lockError.textContent = "보안 연결(https)에서만 열 수 있습니다.";
+        return;
+      }
+      lockBtn.disabled = true;
+      try {
+        const hex = await sha256Hex(lockInput.value);
+        if (hex === LOCK_HASH) {
+          sessionStorage.setItem(LOCK_KEY, "1");
+          lockInput.value = "";
+          openChat();
+          msgInput.focus();
+        } else {
+          lockError.textContent = "비밀번호가 맞지 않습니다. 다시 입력해 주세요.";
+          lockInput.value = "";
+          lockInput.focus();
+        }
+      } catch {
+        lockError.textContent = "확인 중 문제가 발생했습니다. 다시 시도해 주세요.";
+      } finally {
+        lockBtn.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>
